@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Merch POS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── Sidebar ─────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-tag">
+        <span class="punch"></span>
+        MERCH<b>POS</b>
+      </span>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-view="pos">
+        <span class="nav-dot"></span>New Sale
+      </button>
+      <button class="nav-item" data-view="dashboard">
+        <span class="nav-dot"></span>Dashboard
+      </button>
+      <button class="nav-item" data-view="inventory">
+        <span class="nav-dot"></span>Inventory
+      </button>
+      <button class="nav-item" data-view="history">
+        <span class="nav-dot"></span>History
+      </button>
+      <button class="nav-item" data-view="cashiers">
+        <span class="nav-dot"></span>Cashiers
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="cashier-pill" id="activeCashierPill">
+        <span class="label">On shift</span>
+        <span class="value" id="activeCashierName">— none —</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ────────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- === POS / New Sale === -->
+    <section class="view active" id="view-pos">
+      <header class="view-header">
+        <div>
+          <h1>New Sale</h1>
+          <p class="subtitle">Tap items to add them to the cart.</p>
+        </div>
+        <div class="search-wrap">
+          <input type="text" id="posSearch" placeholder="Search products or SKU…" autocomplete="off">
+        </div>
+      </header>
+
+      <div class="pos-layout">
+        <div class="category-row" id="categoryRow"></div>
+        <div class="product-grid" id="posGrid"></div>
+
+        <aside class="cart-panel">
+          <div class="cart-head">
+            <h2>Cart</h2>
+            <button class="btn-text" id="clearCartBtn">Clear</button>
+          </div>
+
+          <div class="cashier-select">
+            <label>Cashier</label>
+            <select id="cashierSelect"></select>
+          </div>
+
+          <div class="cart-items" id="cartItems">
+            <p class="empty-hint">Cart is empty — add something from the grid.</p>
+          </div>
+
+          <div class="cart-summary">
+            <div class="row total">
+              <span>Total</span>
+              <span id="cartTotal">₱0.00</span>
+            </div>
+
+            <div class="payment-toggle">
+              <button class="pay-opt active" data-method="cash">Cash</button>
+              <button class="pay-opt" data-method="online">Online</button>
+              <button class="pay-opt" data-method="sponsor">Sponsor</button>
+            </div>
+
+            <div class="ref-field hidden" id="refField">
+              <label>Reference number</label>
+              <input type="text" id="refNumber" placeholder="e.g. GCash ref #">
+            </div>
+
+            <div class="ref-field hidden" id="sponsorFields">
+              <label>Sponsor name</label>
+              <input type="text" id="sponsorName" placeholder="e.g. Maria Santos">
+              <label>Brand</label>
+              <input type="text" id="sponsorBrand" placeholder="e.g. Local Threads Co.">
+              <label>Representative</label>
+              <input type="text" id="sponsorRep" placeholder="who handed it over">
+            </div>
+
+            <button class="btn-primary btn-checkout" id="checkoutBtn">Complete sale</button>
+            <p class="error-msg" id="posError"></p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- === Dashboard === -->
+    <section class="view" id="view-dashboard">
+      <header class="view-header">
+        <div>
+          <h1>Dashboard</h1>
+          <p class="subtitle">Today at a glance.</p>
+        </div>
+      </header>
+
+      <div class="stat-row">
+        <div class="stat-card">
+          <span class="stat-label">Today's sales</span>
+          <span class="stat-value" id="statTodayTotal">₱0.00</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Transactions today</span>
+          <span class="stat-value" id="statTodayCount">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Cash / Online</span>
+          <span class="stat-value" id="statSplit">₱0 / ₱0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Low stock items</span>
+          <span class="stat-value" id="statLowStock">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Sponsor/freebies today</span>
+          <span class="stat-value" id="statFreebies">0 · ₱0.00</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Low stock (≤ 5 left)</h2>
+        <table class="table" id="lowStockTable">
+          <thead><tr><th>Item</th><th>Category</th><th>Stock</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- === Inventory === -->
+    <section class="view" id="view-inventory">
+      <header class="view-header">
+        <div>
+          <h1>Inventory</h1>
+          <p class="subtitle">Manage merch, prices, and stock.</p>
+        </div>
+        <button class="btn-primary" id="addProductBtn">+ Add item</button>
+      </header>
+
+      <table class="table" id="inventoryTable">
+        <thead>
+          <tr><th>Item</th><th>Category</th><th>SKU</th><th>Price</th><th>Stock</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- === History === -->
+    <section class="view" id="view-history">
+      <header class="view-header">
+        <div>
+          <h1>Sales history</h1>
+          <p class="subtitle">Every completed transaction.</p>
+        </div>
+      </header>
+
+      <table class="table" id="historyTable">
+        <thead>
+          <tr><th>Time</th><th>Cashier</th><th>Items</th><th>Payment</th><th>Reference</th><th>Total</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <!-- === Cashiers === -->
+    <section class="view" id="view-cashiers">
+      <header class="view-header">
+        <div>
+          <h1>Cashiers</h1>
+          <p class="subtitle">Who's allowed to ring up sales.</p>
+        </div>
+        <button class="btn-primary" id="addCashierBtn">+ Add cashier</button>
+      </header>
+
+      <table class="table" id="cashiersTable">
+        <thead><tr><th>Name</th><th>Status</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+
+<!-- ── Product modal ─────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="productModalBackdrop">
+  <div class="modal">
+    <h2 id="productModalTitle">Add item</h2>
+    <form id="productForm">
+      <input type="hidden" id="productId">
+      <label>Name<input type="text" id="pName" required></label>
+      <label>Category<input type="text" id="pCategory" placeholder="e.g. Hoodie, Tee, Sticker"></label>
+      <label>SKU<input type="text" id="pSku" placeholder="optional"></label>
+      <label>Price (₱)<input type="number" id="pPrice" min="0" step="0.01" required></label>
+      <label>Stock<input type="number" id="pStock" min="0" step="1" required></label>
+      <div class="modal-actions">
+        <button type="button" class="btn-text" id="cancelProductBtn">Cancel</button>
+        <button type="submit" class="btn-primary">Save item</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Cashier modal ─────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="cashierModalBackdrop">
+  <div class="modal">
+    <h2>Add cashier</h2>
+    <form id="cashierForm">
+      <label>Name<input type="text" id="cName" required></label>
+      <div class="modal-actions">
+        <button type="button" class="btn-text" id="cancelCashierBtn">Cancel</button>
+        <button type="submit" class="btn-primary">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Toast ─────────────────────────────────────────── -->
+<div class="toast hidden" id="toast"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
