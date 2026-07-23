@@ -34,16 +34,16 @@ app.get('/api/products', (req, res) => {
 });
 
 app.post('/api/products', (req, res) => {
-  const { name, category, sku, price, stock } = req.body;
+  const { name, category, sku, size, price, stock } = req.body;
   handle(res, supabase.from('products')
-    .insert([{ name, category: category || 'Uncategorized', sku: sku || null, price, stock: stock ?? 0 }])
+    .insert([{ name, category: category || 'Uncategorized', sku: sku || null, size: size || null, price, stock: stock ?? 0 }])
     .select().single());
 });
 
 app.put('/api/products/:id', (req, res) => {
-  const { name, category, sku, price, stock } = req.body;
+  const { name, category, sku, size, price, stock } = req.body;
   handle(res, supabase.from('products')
-    .update({ name, category, sku: sku || null, price, stock })
+    .update({ name, category, sku: sku || null, size: size || null, price, stock })
     .eq('id', req.params.id).select().single());
 });
 

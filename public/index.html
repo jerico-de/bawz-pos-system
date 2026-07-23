@@ -16,7 +16,7 @@
   <aside class="sidebar">
     <div class="brand">
       <span class="brand-tag">
-        <span class="punch"></span>
+        <span></span>
         MERCH<b>POS</b>
       </span>
     </div>
@@ -167,7 +167,15 @@
 
       <table class="table" id="inventoryTable">
         <thead>
-          <tr><th>Item</th><th>Category</th><th>SKU</th><th>Price</th><th>Stock</th><th></th></tr>
+          <tr>
+            <th class="sortable" data-sort="name">Item</th>
+            <th class="sortable" data-sort="category">Category</th>
+            <th class="sortable" data-sort="sku">SKU</th>
+            <th class="sortable" data-sort="size">Size</th>
+            <th class="sortable" data-sort="price">Price</th>
+            <th class="sortable" data-sort="stock">Stock</th>
+            <th></th>
+          </tr>
         </thead>
         <tbody></tbody>
       </table>
@@ -218,6 +226,7 @@
       <label>Name<input type="text" id="pName" required></label>
       <label>Category<input type="text" id="pCategory" placeholder="e.g. Hoodie, Tee, Sticker"></label>
       <label>SKU<input type="text" id="pSku" placeholder="optional"></label>
+      <label>Size<input type="text" id="pSize" placeholder="e.g. S, M, L, XL, One Size — optional"></label>
       <label>Price (₱)<input type="number" id="pPrice" min="0" step="0.01" required></label>
       <label>Stock<input type="number" id="pStock" min="0" step="1" required></label>
       <div class="modal-actions">

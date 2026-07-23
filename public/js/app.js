@@ -8,6 +8,7 @@ let cart = [];              // [{product_id, name, sku, price, stock, qty}]
 let activeCategory = 'All';
 let paymentMethod = 'cash';
 let searchTerm = '';
+let inventorySort = { key: 'name', dir: 'asc' };
 
 // ── Fetch helpers ────────────────────────────────────────
 async function api(path, opts = {}) {
@@ -97,9 +98,9 @@ function renderGrid() {
     return `
       <button class="tag-card" data-id="${p.id}" ${remaining <= 0 ? 'disabled' : ''}>
         <span class="punch"></span>
-        <span class="tc-cat">${p.category || 'Uncategorized'}</span>
-        <span class="tc-name">${p.name}</span>
-        <span class="tc-price">${peso(p.price)}</span>
+        <span class="tc-cat">${p.category || 'Uncategorized'}</span><br>
+        <span class="tc-name">${p.name}${p.size ? ' · ' + p.size : ''}</span><br>
+        <span class="tc-price">${peso(p.price)}</span><br>
         <span class="tc-stock ${low ? 'low' : ''}">${remaining <= 0 ? 'Out of stock' : remaining + ' left'}</span>
       </button>`;
   }).join('');
@@ -274,13 +275,37 @@ function renderDashboard() {
 }
 
 // ── Inventory ─────────────────────────────────────────────
+function sortedProducts() {
+  const { key, dir } = inventorySort;
+  const mult = dir === 'asc' ? 1 : -1;
+  return [...products].sort((a, b) => {
+    let av = a[key], bv = b[key];
+    if (key === 'price' || key === 'stock') { av = Number(av) || 0; bv = Number(bv) || 0; }
+    else { av = (av || '').toString().toLowerCase(); bv = (bv || '').toString().toLowerCase(); }
+    if (av < bv) return -1 * mult;
+    if (av > bv) return 1 * mult;
+    return 0;
+  });
+}
+
 function renderInventoryTable() {
+  document.querySelectorAll('#inventoryTable th.sortable').forEach(th => {
+    const isActive = th.dataset.sort === inventorySort.key;
+    th.classList.toggle('active', isActive);
+    th.querySelector('.arrow')?.remove();
+    const arrow = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = isActive ? (inventorySort.dir === 'asc' ? '↑' : '↓') : '↕';
+    th.appendChild(arrow);
+  });
+
   const tbody = document.querySelector('#inventoryTable tbody');
-  tbody.innerHTML = products.map(p => `
+  tbody.innerHTML = sortedProducts().map(p => `
     <tr>
       <td>${p.name}</td>
       <td>${p.category || ''}</td>
       <td class="mono">${p.sku || '—'}</td>
+      <td>${p.size || '—'}</td>
       <td class="mono">${peso(p.price)}</td>
       <td class="mono">${p.stock}</td>
       <td>
@@ -288,11 +313,20 @@ function renderInventoryTable() {
         <button class="icon-btn danger" data-del="${p.id}">Delete</button>
       </td>
     </tr>
-  `).join('') || `<tr><td colspan="6">No items yet — add your first one.</td></tr>`;
+  `).join('') || `<tr><td colspan="7">No items yet — add your first one.</td></tr>`;
 
   tbody.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => openProductModal(b.dataset.edit)));
   tbody.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteProduct(b.dataset.del)));
 }
+
+document.querySelectorAll('#inventoryTable th.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    if (inventorySort.key === key) inventorySort.dir = inventorySort.dir === 'asc' ? 'desc' : 'asc';
+    else inventorySort = { key, dir: 'asc' };
+    renderInventoryTable();
+  });
+});
 
 function openProductModal(id) {
   const backdrop = document.getElementById('productModalBackdrop');
@@ -302,6 +336,7 @@ function openProductModal(id) {
   document.getElementById('pName').value = p ? p.name : '';
   document.getElementById('pCategory').value = p ? (p.category || '') : '';
   document.getElementById('pSku').value = p ? (p.sku || '') : '';
+  document.getElementById('pSize').value = p ? (p.size || '') : '';
   document.getElementById('pPrice').value = p ? p.price : '';
   document.getElementById('pStock').value = p ? p.stock : '';
   backdrop.classList.remove('hidden');
@@ -316,6 +351,7 @@ document.getElementById('productForm').addEventListener('submit', async e => {
     name: document.getElementById('pName').value.trim(),
     category: document.getElementById('pCategory').value.trim(),
     sku: document.getElementById('pSku').value.trim(),
+    size: document.getElementById('pSize').value.trim(),
     price: parseFloat(document.getElementById('pPrice').value),
     stock: parseInt(document.getElementById('pStock').value, 10)
   };
