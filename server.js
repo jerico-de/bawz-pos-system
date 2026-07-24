@@ -195,6 +195,10 @@ app.post('/api/sales', async (req, res) => {
     });
     if (error) throw error;
 
+    // Pull the real rows create_sale just inserted (name/size/price snapshot)
+    // rather than the raw cart payload, so the audit trail shows full detail.
+    const { data: insertedItems } = await supabase.from('sale_items').select('*').eq('sale_id', data);
+
     const { data: cashier } = await supabase.from('cashiers').select('name').eq('id', cashier_id).single();
     const itemCount = (items || []).reduce((s, i) => s + (i.quantity || 0), 0);
 
@@ -202,7 +206,14 @@ app.post('/api/sales', async (req, res) => {
       action: 'sale_create', entity_type: 'sale', entity_id: data,
       actor_cashier_id: cashier_id, actor_name: cashier?.name,
       summary: `New sale — ${itemCount} item(s), ${payment_method}${payment_method === 'sponsor' ? ` (${sponsor_brand || 'sponsor'})` : ''}`,
-      details: { items, payment_method }
+      details: {
+        items: insertedItems || items,
+        payment_method,
+        reference_number: payment_method === 'online' ? (reference_number || null) : null,
+        sponsor: payment_method === 'sponsor'
+          ? { name: sponsor_name || null, brand: sponsor_brand || null, representative: sponsor_representative || null }
+          : null
+      }
     });
 
     res.json({ sale_id: data });
@@ -274,6 +285,9 @@ app.put('/api/sales/:id', async (req, res) => {
     const oldMap = new Map(oldItems.map(i => [i.product_id, i.quantity]));
     const allIds = new Set([...newMap.keys(), ...oldMap.keys()]);
     const changeLines = [];
+    if (existingSale.payment_method !== payment_method) {
+      changeLines.push(`payment: ${existingSale.payment_method} → ${payment_method}`);
+    }
 
     for (const pid of allIds) {
       const oldQty = oldMap.get(pid) || 0;
@@ -330,7 +344,20 @@ app.put('/api/sales/:id', async (req, res) => {
       action: 'sale_edit', entity_type: 'sale', entity_id: saleId,
       actor_cashier_id, actor_name,
       summary: `Edited sale — ${changeLines.join(', ') || 'payment info updated'}${reason ? ` (reason: ${reason})` : ''}`,
-      details: { old_items: oldItems, new_items: newRows, reason, payment_method }
+      details: {
+        old_items: oldItems, new_items: newRows, reason,
+        old_payment_method: existingSale.payment_method, payment_method,
+        old_reference_number: existingSale.reference_number || null,
+        reference_number: payment_method === 'online' ? (reference_number || null) : null,
+        old_sponsor: {
+          name: existingSale.sponsor_name || null,
+          brand: existingSale.sponsor_brand || null,
+          representative: existingSale.sponsor_representative || null
+        },
+        sponsor: payment_method === 'sponsor' ? {
+          name: sponsor_name || null, brand: sponsor_brand || null, representative: sponsor_representative || null
+        } : null
+      }
     });
 
     res.json({ ok: true });

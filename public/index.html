@@ -58,15 +58,19 @@
       <header class="view-header">
         <div>
           <h1>New Sale</h1>
-          <p class="subtitle">Tap items to add them to the cart. Drag cards to reorder them.</p>
+          <p class="subtitle">Tap items to add them to the cart.</p>
         </div>
-        <div class="search-wrap">
-          <input type="text" id="posSearch" placeholder="Search products or SKU…" autocomplete="off">
+        <div class="pos-header-controls">
+          <div class="search-wrap">
+            <input type="text" id="posSearch" placeholder="Search products or SKU…" autocomplete="off">
+          </div>
+          <button type="button" class="btn-toggle" id="reorderModeBtn">Reorder cards</button>
         </div>
       </header>
 
       <div class="pos-layout">
         <div class="category-row" id="categoryRow"></div>
+        <p class="reorder-hint hidden" id="reorderHint">Reordering — tap ◀ ▶ to move a card, or drag it on desktop. Tap "Done reordering" when finished.</p>
         <div class="product-grid" id="posGrid"></div>
 
         <aside class="cart-panel">
@@ -145,8 +149,19 @@
         </div>
         <div class="stat-card">
           <span class="stat-label">Sponsor/freebies today</span>
-          <span class="stat-value" id="statFreebies">0 · ₱0.00</span>
+          <span class="stat-value" id="statFreebies">0</span>
         </div>
+      </div>
+
+      <div class="panel">
+        <h2>Sales by day</h2>
+        <div class="scroll-table">
+          <table class="table" id="dailySummaryTable">
+            <thead><tr><th>Date</th><th>Transactions</th><th>Cash</th><th>Online</th><th>Sponsor</th><th>Total</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="pagination" id="dailySummaryPagination"></div>
       </div>
 
       <div class="panel">
@@ -193,12 +208,37 @@
         </div>
       </header>
 
+      <div class="filter-row">
+        <select id="historyDateFilter">
+          <option value="">All time</option>
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+        </select>
+        <select id="historyCashierFilter"><option value="">All cashiers</option></select>
+        <select id="historyPaymentFilter">
+          <option value="">All payment methods</option>
+          <option value="cash">Cash</option>
+          <option value="online">Online</option>
+          <option value="sponsor">Sponsor</option>
+        </select>
+        <input type="text" id="historyItemFilter" placeholder="Filter by item name…" autocomplete="off">
+        <select id="historySort">
+          <option value="date_desc">Newest first</option>
+          <option value="date_asc">Oldest first</option>
+          <option value="total_desc">Total: high to low</option>
+          <option value="total_asc">Total: low to high</option>
+        </select>
+      </div>
+
       <table class="table" id="historyTable">
         <thead>
           <tr><th>Time</th><th>Cashier</th><th>Items</th><th>Payment</th><th>Reference</th><th>Total</th><th></th></tr>
         </thead>
         <tbody></tbody>
       </table>
+      <div class="pagination" id="historyPagination"></div>
     </section>
 
     <!-- === Audit Trail === -->
@@ -206,9 +246,24 @@
       <header class="view-header">
         <div>
           <h1>Audit Trail</h1>
-          <p class="subtitle">Every inventory change, sale, and edit — with who did it.</p>
+          <p class="subtitle">Every inventory change, sale, and edit — with who did it. Click a row for full details.</p>
         </div>
       </header>
+
+      <div class="filter-row">
+        <select id="auditActorFilter"><option value="">All actors</option></select>
+        <select id="auditEntityFilter">
+          <option value="">All types</option>
+          <option value="product">Product</option>
+          <option value="cashier">Cashier</option>
+          <option value="sale">Sale</option>
+        </select>
+        <select id="auditActionFilter"><option value="">All actions</option></select>
+        <select id="auditSort">
+          <option value="date_desc">Newest first</option>
+          <option value="date_asc">Oldest first</option>
+        </select>
+      </div>
 
       <table class="table" id="auditTable">
         <thead>
@@ -216,6 +271,7 @@
         </thead>
         <tbody></tbody>
       </table>
+      <div class="pagination" id="auditPagination"></div>
     </section>
 
     <!-- === Cashiers === -->
@@ -276,35 +332,51 @@
   <div class="modal modal-wide">
     <h2>Edit sale</h2>
 
-    <div class="edit-sale-items" id="editSaleItems"></div>
-
-    <label>Actor (who's making this change)
-      <select id="editActorSelect"></select>
-    </label>
-
-    <div class="payment-toggle" id="editPayToggle">
-      <button type="button" class="pay-opt" data-method="cash">Cash</button>
-      <button type="button" class="pay-opt" data-method="online">Online</button>
-      <button type="button" class="pay-opt" data-method="sponsor">Sponsor</button>
+    <div class="edit-section">
+      <h3 class="detail-section-title">Original sale</h3>
+      <div class="detail-row"><span>Payment</span><span id="origPaymentText"></span></div>
+      <div class="detail-row hidden" id="origRefRow"><span>Reference</span><span id="origRefText"></span></div>
+      <div class="detail-row hidden" id="origSponsorRow"><span>Sponsor</span><span id="origSponsorText"></span></div>
+      <div id="origItemsList"></div>
+      <div class="detail-row"><span>Total</span><span id="origTotalText"></span></div>
     </div>
 
-    <div class="ref-field hidden" id="editRefField">
-      <label>Reference number</label>
-      <input type="text" id="editRefNumber">
+    <div class="edit-section">
+      <h3 class="detail-section-title">Edit items</h3>
+      <div class="edit-sale-items" id="editSaleItems"></div>
     </div>
 
-    <div class="ref-field hidden" id="editSponsorFields">
-      <label>Sponsor name</label>
-      <input type="text" id="editSponsorName">
-      <label>Brand</label>
-      <input type="text" id="editSponsorBrand">
-      <label>Representative</label>
-      <input type="text" id="editSponsorRep">
+    <div class="edit-section">
+      <h3 class="detail-section-title">New payment method</h3>
+      <div class="payment-toggle" id="editPayToggle">
+        <button type="button" class="pay-opt" data-method="cash">Cash</button>
+        <button type="button" class="pay-opt" data-method="online">Online</button>
+        <button type="button" class="pay-opt" data-method="sponsor">Sponsor</button>
+      </div>
+
+      <div class="ref-field hidden" id="editRefField">
+        <label>Reference number</label>
+        <input type="text" id="editRefNumber">
+      </div>
+
+      <div class="ref-field hidden" id="editSponsorFields">
+        <label>Sponsor name</label>
+        <input type="text" id="editSponsorName">
+        <label>Brand</label>
+        <input type="text" id="editSponsorBrand">
+        <label>Representative</label>
+        <input type="text" id="editSponsorRep">
+      </div>
     </div>
 
-    <label>Reason for change
-      <textarea id="editReason" rows="2" placeholder="e.g. customer swapped size M → L"></textarea>
-    </label>
+    <div class="edit-section">
+      <label>Actor (who's making this change)
+        <select id="editActorSelect"></select>
+      </label>
+      <label>Reason for change
+        <textarea id="editReason" rows="2" placeholder="e.g. customer swapped size M → L"></textarea>
+      </label>
+    </div>
 
     <div class="modal-actions space-between">
       <button type="button" class="btn-text danger" id="voidSaleBtn">Void sale</button>
@@ -325,6 +397,18 @@
     <div class="audit-detail-rows" id="auditDetailRows"></div>
     <div class="modal-actions">
       <button type="button" class="btn-text" id="closeAuditDetailBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Day sales modal (from Dashboard's Sales by day) ──── -->
+<div class="modal-backdrop hidden" id="daySalesModalBackdrop">
+  <div class="modal modal-wide">
+    <h2 id="daySalesTitle">Sales for —</h2>
+    <div class="audit-detail-rows" id="daySalesList"></div>
+    <div class="modal-actions space-between">
+      <button type="button" class="btn-text" id="viewDayInHistoryBtn">View full day in History →</button>
+      <button type="button" class="btn-text" id="closeDaySalesBtn">Close</button>
     </div>
   </div>
 </div>
