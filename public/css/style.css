@@ -30,10 +30,19 @@ body{
 }
 h1,h2{ font-family: var(--font-display); font-weight: 600; margin: 0; letter-spacing: 0.2px; }
 button{ font-family: inherit; cursor: pointer; }
-input, select{ font-family: inherit; }
+input, select, textarea{ font-family: inherit; }
 :focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .hidden{ display: none !important; }
+
+select{
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  font-size: 13.5px;
+}
 
 /* ── Layout ─────────────────────────────────────────── */
 .app{ display: flex; min-height: 100vh; }
@@ -101,10 +110,10 @@ input, select{ font-family: inherit; }
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
 }
 .cashier-pill .label{ font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--text-muted); }
-.cashier-pill .value{ font-size: 14px; font-weight: 600; }
+.cashier-pill select{ width: 100%; padding: 6px 8px; font-size: 13.5px; font-weight: 600; }
 
 .main{ flex: 1; padding: 28px 32px 60px; min-width: 0; }
 
@@ -144,6 +153,8 @@ input, select{ font-family: inherit; }
   padding: 6px 4px;
 }
 .btn-text:hover{ color: var(--text); }
+.btn-text.danger{ color: var(--danger); }
+.btn-text.danger:hover{ color: #e08c7f; }
 
 /* ── Search ─────────────────────────────────────────── */
 .search-wrap input, .cashier-select select, label input{
@@ -195,10 +206,12 @@ input, select{ font-family: inherit; }
   padding: 14px 12px 12px;
   text-align: left;
   color: var(--text);
-  transition: border-color .15s, transform .1s;
+  transition: border-color .15s, transform .1s, opacity .15s;
+  cursor: grab;
 }
 .tag-card:hover{ border-color: var(--accent); }
-.tag-card:active{ transform: scale(0.98); }
+.tag-card:active{ transform: scale(0.98); cursor: grabbing; }
+.tag-card.dragging{ opacity: .35; border-style: solid; border-color: var(--accent); }
 .tag-card .punch{ position: absolute; top: 10px; right: 10px; }
 .tag-card .tc-cat{ font-size: 10.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }
 .tag-card .tc-name{ font-family: var(--font-display); font-size: 17px; margin: 4px 0 10px; line-height: 1.15; }
@@ -302,7 +315,28 @@ input, select{ font-family: inherit; }
 .table th.sortable.active .arrow{ opacity: 1; }
 .table tbody tr:last-child td{ border-bottom: none; }
 .table tbody tr:hover{ background: var(--surface-2); }
+.table tbody tr.row-voided{ opacity: .5; }
+.table tbody tr.row-clickable{ cursor: pointer; }
 .mono{ font-family: var(--font-mono); }
+
+.audit-detail-rows{ max-height: 360px; overflow-y: auto; margin-bottom: 6px; }
+.detail-row{
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 8px 0; border-bottom: 1px dashed var(--border);
+  font-size: 13.5px;
+}
+.detail-row:last-child{ border-bottom: none; }
+.detail-row span:first-child{ color: var(--text-muted); }
+.detail-row span:last-child{ font-family: var(--font-mono); text-align: right; }
+.detail-section-title{
+  font-family: var(--font-body); font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+  color: var(--text); margin: 16px 0 4px; font-weight: 600;
+}
+.detail-section-title:first-child{ margin-top: 0; }
+.audit-detail-rows pre{
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 12px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+}
 
 .badge{ display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .badge.cash{ background: rgba(106,171,122,.15); color: var(--success); }
@@ -310,6 +344,11 @@ input, select{ font-family: inherit; }
 .badge.sponsor{ background: rgba(227,178,60,.15); color: var(--accent); }
 .badge.active{ background: rgba(106,171,122,.15); color: var(--success); }
 .badge.inactive{ background: rgba(154,146,132,.15); color: var(--text-muted); }
+.badge.voided{ background: rgba(207,97,84,.15); color: var(--danger); }
+.badge.edited{ background: rgba(60,168,227,.15); color: var(--accent); }
+.badge.success{ background: rgba(106,171,122,.15); color: var(--success); }
+.badge.danger{ background: rgba(207,97,84,.15); color: var(--danger); }
+.badge.info{ background: rgba(60,168,227,.15); color: var(--accent); }
 
 .icon-btn{ background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 4px 6px; }
 .icon-btn:hover{ color: var(--accent); }
@@ -319,16 +358,29 @@ input, select{ font-family: inherit; }
 .modal-backdrop{
   position: fixed; inset: 0; background: rgba(0,0,0,.55);
   display: flex; align-items: center; justify-content: center; z-index: 100;
+  padding: 20px;
+  overflow-y: auto;
 }
 .modal{
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 22px; width: 360px; max-width: 90vw;
 }
+.modal.modal-wide{ width: 460px; }
 .modal h2{ margin-bottom: 16px; font-size: 20px; }
 .modal form{ display: flex; flex-direction: column; gap: 12px; }
-.modal label{ display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; }
-.modal label input{ width: 100%; text-transform: none; letter-spacing: normal; font-size: 14px; color: var(--text); }
+.modal label{ display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; margin-top: 4px; }
+.modal label:first-child{ margin-top: 0; }
+.modal label input, .modal label textarea{ width: 100%; text-transform: none; letter-spacing: normal; font-size: 14px; color: var(--text); }
+.modal label textarea{
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 9px 12px; font-family: inherit; resize: vertical;
+}
 .modal-actions{ display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+.modal-actions.space-between{ justify-content: space-between; align-items: center; }
+
+.edit-sale-items{ max-height: 260px; overflow-y: auto; margin-bottom: 12px; }
+.edit-add-item{ margin: 10px 0; }
+.edit-add-item select{ width: 100%; }
 
 /* ── Toast ──────────────────────────────────────────── */
 .toast{
