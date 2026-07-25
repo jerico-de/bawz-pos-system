@@ -305,6 +305,12 @@
       <label>Size<input type="text" id="pSize" placeholder="e.g. S, M, L, XL, 2XL, One Size — optional"></label>
       <label>Price (₱)<input type="number" id="pPrice" min="0" step="0.01" required></label>
       <label>Stock<input type="number" id="pStock" min="0" step="1" required></label>
+      <div class="discount-editor">
+        <label>Discounts (optional)</label>
+        <p class="field-hint">A named price for one unit only — e.g. "Dancers" at ₱450 while the regular price is ₱550.</p>
+        <div id="discountRows"></div>
+        <button type="button" class="btn-text" id="addDiscountRowBtn">+ Add discount</button>
+      </div>
       <div class="modal-actions">
         <button type="button" class="btn-text" id="cancelProductBtn">Cancel</button>
         <button type="submit" class="btn-primary">Save item</button>

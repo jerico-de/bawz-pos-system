@@ -271,7 +271,10 @@ function addToCart(productId) {
   const currentQty = line ? line.qty : 0;
   if (currentQty >= p.stock) { toast(`Only ${p.stock} of "${p.name}" in stock.`, true); return; }
   if (line) line.qty++;
-  else cart.push({ product_id: p.id, name: p.name, size: p.size, sku: p.sku, price: p.price, stock: p.stock, qty: 1 });
+  else cart.push({
+    product_id: p.id, name: p.name, size: p.size, sku: p.sku, price: p.price, stock: p.stock, qty: 1,
+    discounts: p.discounts || [], discountName: '', buyerName: ''
+  });
   renderCart();
   renderGrid();
 }
@@ -288,13 +291,36 @@ function changeQty(productId, delta) {
   renderGrid();
 }
 
+// A discount applies to exactly ONE unit of a line — the rest of that
+// line's quantity stays at full price.
+function cartLineTotal(c) {
+  if (!c.discountName) return c.price * c.qty;
+  const d = (c.discounts || []).find(x => x.name === c.discountName);
+  const discountedUnitPrice = d ? Number(d.price) : c.price;
+  return discountedUnitPrice + Math.max(0, c.qty - 1) * c.price;
+}
+
 function renderCart() {
   const wrap = document.getElementById('cartItems');
   const isSponsor = paymentMethod === 'sponsor';
   if (!cart.length) {
     wrap.innerHTML = `<p class="empty-hint">Cart is empty — add something from the grid.</p>`;
   } else {
-    wrap.innerHTML = cart.map(c => `
+    wrap.innerHTML = cart.map(c => {
+      const lineTotal = isSponsor ? 0 : cartLineTotal(c);
+      const discountOptionsHTML = (c.discounts || []).map(d =>
+        `<option value="${d.name}" ${c.discountName === d.name ? 'selected' : ''}>${d.name} — ${peso(d.price)}</option>`
+      ).join('');
+      const discountRowHTML = (c.discounts && c.discounts.length) ? `
+        <div class="cl-discount-row">
+          <select class="cl-discount-select" data-id="${c.product_id}">
+            <option value="">No discount</option>
+            ${discountOptionsHTML}
+          </select>
+          ${c.discountName ? `<input type="text" class="cl-buyer-input" data-id="${c.product_id}" placeholder="Buyer's name (required)" value="${c.buyerName || ''}">` : ''}
+        </div>` : '';
+
+      return `
       <div class="cart-line">
         <div class="cl-name">${c.name}${c.size ? ' · ' + c.size : ''}<small>${c.sku || ''}</small></div>
         <div class="cl-qty">
@@ -302,18 +328,38 @@ function renderCart() {
           <span>${c.qty}</span>
           <button data-id="${c.product_id}" data-d="1">+</button>
         </div>
-        <div class="cl-total">${isSponsor ? 'Free' : peso(c.price * c.qty)}</div>
+        <div class="cl-total">${isSponsor ? 'Free' : peso(lineTotal)}</div>
         <button class="cl-remove" data-id="${c.product_id}" data-d="remove">×</button>
       </div>
-    `).join('');
+      ${discountRowHTML}
+    `;
+    }).join('');
+
     wrap.querySelectorAll('button[data-d]').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.d === 'remove') { cart = cart.filter(c => c.product_id !== btn.dataset.id); renderCart(); renderGrid(); }
         else changeQty(btn.dataset.id, parseInt(btn.dataset.d));
       });
     });
+    wrap.querySelectorAll('.cl-discount-select').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const line = cart.find(c => c.product_id === sel.dataset.id);
+        if (!line) return;
+        line.discountName = sel.value;
+        if (!sel.value) line.buyerName = '';
+        renderCart();
+      });
+    });
+    // Buyer-name typing does NOT trigger a full re-render (would drop focus
+    // mid-keystroke) — it just updates the cart line's state directly.
+    wrap.querySelectorAll('.cl-buyer-input').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const line = cart.find(c => c.product_id === inp.dataset.id);
+        if (line) line.buyerName = inp.value;
+      });
+    });
   }
-  const total = isSponsor ? 0 : cart.reduce((sum, c) => sum + c.price * c.qty, 0);
+  const total = isSponsor ? 0 : cart.reduce((sum, c) => sum + cartLineTotal(c), 0);
   document.getElementById('cartTotal').textContent = peso(total);
 }
 
@@ -387,6 +433,26 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
     return;
   }
 
+  for (const c of cart) {
+    if (c.discountName && !c.buyerName.trim()) {
+      errEl.textContent = `Buyer name is required for the discount on "${c.name}".`;
+      return;
+    }
+  }
+
+  // A discount applies to exactly one unit — split it out as its own item
+  // entry, with the remaining quantity (if any) sent as a plain full-price
+  // entry for the same product.
+  const saleItems = [];
+  cart.forEach(c => {
+    if (c.discountName) {
+      saleItems.push({ product_id: c.product_id, quantity: 1, discount_name: c.discountName, buyer_name: c.buyerName.trim() });
+      if (c.qty > 1) saleItems.push({ product_id: c.product_id, quantity: c.qty - 1 });
+    } else {
+      saleItems.push({ product_id: c.product_id, quantity: c.qty });
+    }
+  });
+
   const btn = document.getElementById('checkoutBtn');
   btn.disabled = true;
   btn.textContent = 'Processing…';
@@ -401,7 +467,7 @@ document.getElementById('checkoutBtn').addEventListener('click', async () => {
         sponsor_name: paymentMethod === 'sponsor' ? sponsorName : null,
         sponsor_brand: paymentMethod === 'sponsor' ? sponsorBrand : null,
         sponsor_representative: paymentMethod === 'sponsor' ? sponsorRep : null,
-        items: cart.map(c => ({ product_id: c.product_id, quantity: c.qty }))
+        items: saleItems
       })
     });
     toast('Sale completed.');
@@ -579,7 +645,7 @@ function renderInventoryTable() {
   const tbody = document.querySelector('#inventoryTable tbody');
   tbody.innerHTML = sortedProducts().map(p => `
     <tr>
-      <td>${p.name}</td>
+      <td>${p.name}${p.discounts && p.discounts.length ? `<div class="row-sub">${p.discounts.map(d => `${d.name}: ${peso(d.price)}`).join(' · ')}</div>` : ''}</td>
       <td>${p.category || ''}</td>
       <td class="mono">${p.sku || '—'}</td>
       <td>${p.size || '—'}</td>
@@ -616,15 +682,52 @@ function openProductModal(id) {
   document.getElementById('pSize').value = p ? (p.size || '') : '';
   document.getElementById('pPrice').value = p ? p.price : '';
   document.getElementById('pStock').value = p ? p.stock : '';
+  productDiscountDraft = p && Array.isArray(p.discounts) ? p.discounts.map(d => ({ name: d.name, price: d.price })) : [];
+  renderDiscountRows();
   backdrop.classList.remove('hidden');
 }
 document.getElementById('addProductBtn').addEventListener('click', () => openProductModal(null));
 document.getElementById('cancelProductBtn').addEventListener('click', () => document.getElementById('productModalBackdrop').classList.add('hidden'));
 
+// ── Per-item discounts (draft list edited within the product modal) ──
+let productDiscountDraft = [];
+
+function renderDiscountRows() {
+  const wrap = document.getElementById('discountRows');
+  wrap.innerHTML = productDiscountDraft.map((d, idx) => `
+    <div class="discount-row" data-idx="${idx}">
+      <input type="text" class="discount-name-input" data-idx="${idx}" placeholder="e.g. Dancers" value="${d.name || ''}">
+      <input type="number" class="discount-price-input" data-idx="${idx}" placeholder="₱" min="0" step="0.01" value="${d.price ?? ''}">
+      <button type="button" class="discount-remove-btn" data-idx="${idx}" title="Remove">×</button>
+    </div>
+  `).join('') || `<p class="empty-hint">No discounts yet.</p>`;
+
+  wrap.querySelectorAll('.discount-name-input').forEach(inp => {
+    inp.addEventListener('input', () => { productDiscountDraft[parseInt(inp.dataset.idx)].name = inp.value; });
+  });
+  wrap.querySelectorAll('.discount-price-input').forEach(inp => {
+    inp.addEventListener('input', () => { productDiscountDraft[parseInt(inp.dataset.idx)].price = inp.value; });
+  });
+  wrap.querySelectorAll('.discount-remove-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      productDiscountDraft.splice(parseInt(btn.dataset.idx), 1);
+      renderDiscountRows();
+    });
+  });
+}
+
+document.getElementById('addDiscountRowBtn').addEventListener('click', () => {
+  productDiscountDraft.push({ name: '', price: '' });
+  renderDiscountRows();
+});
+
 document.getElementById('productForm').addEventListener('submit', async e => {
   e.preventDefault();
   if (!requireActor()) return;
   const id = document.getElementById('productId').value;
+  const discounts = productDiscountDraft
+    .map(d => ({ name: (d.name || '').toString().trim(), price: parseFloat(d.price) }))
+    .filter(d => d.name && !isNaN(d.price) && d.price >= 0);
   const payload = {
     name: document.getElementById('pName').value.trim(),
     category: document.getElementById('pCategory').value.trim(),
@@ -632,6 +735,7 @@ document.getElementById('productForm').addEventListener('submit', async e => {
     size: document.getElementById('pSize').value.trim(),
     price: parseFloat(document.getElementById('pPrice').value),
     stock: parseInt(document.getElementById('pStock').value, 10),
+    discounts,
     actor_cashier_id: currentActorId,
     actor_name: currentActorName
   };
@@ -1062,15 +1166,20 @@ function formatProductDetailRows(a) {
   const d = a.details || {};
   const before = d.before || null;
   const after = d.after || d.new || d.deleted || {};
-  const fieldLabels = { name: 'Name', category: 'Category', sku: 'SKU', size: 'Size', price: 'Price', stock: 'Stock' };
+  const fieldLabels = { name: 'Name', category: 'Category', sku: 'SKU', size: 'Size', price: 'Price', stock: 'Stock', discounts: 'Discounts' };
+  const displayVal = (f, val) => {
+    if (f === 'price') return val !== null && val !== undefined ? peso(val) : '—';
+    if (f === 'discounts') return Array.isArray(val) && val.length ? val.map(x => `${x.name}: ${peso(x.price)}`).join(', ') : '—';
+    return val ?? '—';
+  };
   const rows = [];
   Object.keys(fieldLabels).forEach(f => {
     if (after[f] === undefined) return;
     const label = fieldLabels[f];
-    const val = f === 'price' ? (after[f] !== null ? peso(after[f]) : '—') : (after[f] ?? '—');
-    if (before && before[f] !== undefined && before[f] !== after[f]) {
-      const beforeVal = f === 'price' ? peso(before[f]) : (before[f] ?? '—');
-      rows.push([label, `${beforeVal} → ${val}`]);
+    const val = displayVal(f, after[f]);
+    const changed = before && before[f] !== undefined && JSON.stringify(before[f]) !== JSON.stringify(after[f]);
+    if (changed) {
+      rows.push([label, `${displayVal(f, before[f])} → ${val}`]);
     } else {
       rows.push([label, val]);
     }
@@ -1092,10 +1201,13 @@ function itemsListHTML(items) {
     const label = it.product_name || it.name || 'Item';
     const size = it.product_size || it.size;
     const qty = it.quantity ?? it.qty ?? '—';
+    const discountTag = it.discount_name
+      ? ` — ${it.discount_name} discount${it.buyer_name ? ' (buyer: ' + it.buyer_name + ')' : ''}`
+      : '';
     const lineTotal = it.line_total !== undefined
       ? peso(it.line_total)
       : (it.price !== undefined ? peso(it.price * (it.quantity ?? it.qty ?? 0)) : '');
-    return `<div class="detail-row"><span>${label}${size ? ' · ' + size : ''} ×${qty}</span><span>${lineTotal}</span></div>`;
+    return `<div class="detail-row"><span>${label}${size ? ' · ' + size : ''} ×${qty}${discountTag}</span><span>${lineTotal}</span></div>`;
   }).join('');
 }
 

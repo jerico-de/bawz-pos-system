@@ -44,14 +44,18 @@ app.get('/api/products', (req, res) => {
 });
 
 app.post('/api/products', async (req, res) => {
-  const { name, category, sku, size, price, stock, actor_cashier_id, actor_name } = req.body;
+  const { name, category, sku, size, price, stock, discounts, actor_cashier_id, actor_name } = req.body;
   try {
     const { data: maxRow } = await supabase
       .from('products').select('sort_order').order('sort_order', { ascending: false }).limit(1).maybeSingle();
     const nextOrder = (maxRow?.sort_order || 0) + 10;
 
     const { data, error } = await supabase.from('products')
-      .insert([{ name, category: category || 'Uncategorized', sku: sku || null, size: size || null, price, stock: stock ?? 0, sort_order: nextOrder }])
+      .insert([{
+        name, category: category || 'Uncategorized', sku: sku || null, size: size || null,
+        price, stock: stock ?? 0, sort_order: nextOrder,
+        discounts: Array.isArray(discounts) ? discounts : []
+      }])
       .select().single();
     if (error) throw error;
 
@@ -69,12 +73,15 @@ app.post('/api/products', async (req, res) => {
 });
 
 app.put('/api/products/:id', async (req, res) => {
-  const { name, category, sku, size, price, stock, actor_cashier_id, actor_name } = req.body;
+  const { name, category, sku, size, price, stock, discounts, actor_cashier_id, actor_name } = req.body;
   try {
     const { data: before } = await supabase.from('products').select('*').eq('id', req.params.id).single();
 
     const { data, error } = await supabase.from('products')
-      .update({ name, category, sku: sku || null, size: size || null, price, stock })
+      .update({
+        name, category, sku: sku || null, size: size || null, price, stock,
+        discounts: Array.isArray(discounts) ? discounts : []
+      })
       .eq('id', req.params.id).select().single();
     if (error) throw error;
 
@@ -85,6 +92,7 @@ app.put('/api/products/:id', async (req, res) => {
       if (Number(before.stock) !== Number(data.stock)) changes.push(`stock ${before.stock} → ${data.stock}`);
       if ((before.size || '') !== (data.size || '')) changes.push(`size "${before.size || '—'}" → "${data.size || '—'}"`);
       if ((before.category || '') !== (data.category || '')) changes.push(`category "${before.category || '—'}" → "${data.category || '—'}"`);
+      if (JSON.stringify(before.discounts || []) !== JSON.stringify(data.discounts || [])) changes.push(`discounts updated`);
     }
 
     await logAudit({
@@ -281,17 +289,26 @@ app.put('/api/sales/:id', async (req, res) => {
       return res.status(400).json({ error: 'A sale needs at least one item — use void to cancel it entirely.' });
     }
 
-    const newMap = new Map(items.map(i => [i.product_id, i.quantity]));
-    const oldMap = new Map(oldItems.map(i => [i.product_id, i.quantity]));
-    const allIds = new Set([...newMap.keys(), ...oldMap.keys()]);
+    // A discounted line and its full-price remainder arrive as separate
+    // entries for the same product_id, so quantities are aggregated per
+    // product for the stock diff, but each entry keeps its own row (and
+    // its own price) when sale_items gets rebuilt below.
+    const aggregateQty = list => {
+      const map = new Map();
+      for (const it of list) map.set(it.product_id, (map.get(it.product_id) || 0) + (it.quantity || 0));
+      return map;
+    };
+    const newAgg = aggregateQty(items);
+    const oldAgg = aggregateQty(oldItems);
+    const allIds = new Set([...newAgg.keys(), ...oldAgg.keys()]);
     const changeLines = [];
     if (existingSale.payment_method !== payment_method) {
       changeLines.push(`payment: ${existingSale.payment_method} → ${payment_method}`);
     }
 
     for (const pid of allIds) {
-      const oldQty = oldMap.get(pid) || 0;
-      const newQty = newMap.get(pid) || 0;
+      const oldQty = oldAgg.get(pid) || 0;
+      const newQty = newAgg.get(pid) || 0;
       const delta = newQty - oldQty; // positive = deduct more stock, negative = return stock
       if (delta === 0) continue;
 
@@ -305,22 +322,42 @@ app.put('/api/sales/:id', async (req, res) => {
       changeLines.push(`${prod.name}: ${oldQty} → ${newQty}`);
     }
 
-    // Rebuild sale_items with a fresh snapshot of name/size/price.
+    // Rebuild sale_items with a fresh snapshot of name/size/price — one row
+    // per entry (not deduped), so a discounted unit and its full-price
+    // siblings stay as separate, individually-priced rows.
     // Sponsor/freebie sales carry no price — it's not real income.
     const isSponsorEdit = payment_method === 'sponsor';
     await supabase.from('sale_items').delete().eq('sale_id', saleId);
     let subtotal = 0;
     const newRows = [];
-    for (const [pid, qty] of newMap) {
+    for (const it of items) {
+      const qty = it.quantity;
       if (!qty || qty <= 0) continue;
-      const { data: prod } = await supabase.from('products').select('name,size,price').eq('id', pid).single();
-      const unitPrice = isSponsorEdit ? 0 : (prod?.price || 0);
-      const lineTotal = isSponsorEdit ? 0 : unitPrice * qty;
+
+      const { data: prod } = await supabase.from('products').select('name,size,price,discounts').eq('id', it.product_id).single();
+      let unitPrice = prod?.price || 0;
+      let discountName = null, buyerName = null;
+
+      if (it.discount_name) {
+        const match = (prod?.discounts || []).find(d => d.name === it.discount_name);
+        if (!match) throw new Error(`Unknown discount "${it.discount_name}" for ${prod?.name || 'item'}.`);
+        if (!it.buyer_name || !String(it.buyer_name).trim()) {
+          throw new Error(`Buyer name is required for the discount on ${prod?.name || 'item'}.`);
+        }
+        unitPrice = Number(match.price);
+        discountName = it.discount_name;
+        buyerName = String(it.buyer_name).trim();
+      }
+
+      if (isSponsorEdit) unitPrice = 0;
+      const lineTotal = unitPrice * qty;
       subtotal += lineTotal;
+
       newRows.push({
-        sale_id: saleId, product_id: pid,
+        sale_id: saleId, product_id: it.product_id,
         product_name: prod?.name, product_size: prod?.size,
-        quantity: qty, unit_price: unitPrice, line_total: lineTotal
+        quantity: qty, unit_price: unitPrice, line_total: lineTotal,
+        discount_name: discountName, buyer_name: buyerName
       });
     }
     if (newRows.length) {
